@@ -1,6 +1,8 @@
 using LinearAlgebra, JuMP, Gurobi, Polymake, Printf
 
-function AllVertex(A,B,b)
+
+
+function AllVertex(A,B,b,cbFlag)
 
     (m,nx) = size(A);
     (ny,) = size(B');
@@ -15,8 +17,112 @@ function AllVertex(A,B,b)
     (K,s) = getFaces_pmk(A,B,b,m,nx,ny) #Warning: this function is implicitly assuming that all inequalities are 
     
     (m,zvar,xvar,outvar) = MIPVertexSearchBase(A,B,b,K,s,nx,ny);
+    function greedy_callback(cb_data)
+
+        status = callback_node_status(cb_data, m)
+        #println("Entered callback with status",status) 
+        #if status != MOI.CALLBACK_NODE_STATUS_INTEGER ##This bothers me. It seems we're never called here
+        #    return
+        #end
+    
+        #Gurobi.load_callback_variable_primal(cb_data, cb_where)
+        s = length(zvar)
+        z_val = round.(callback_value.(Ref(cb_data), zvar))
+        status = MOI.submit(m, MOI.HeuristicSolution(cb_data), zvar, round.(z_val))
+        #@show z_val
+        #println("I submitted a heuristic solution, and the status was: ", status)
+
+        if status == MOI.HEURISTIC_SOLUTION_REJECTED
+            return
+        end
+
+        improved = false
+        for i = 1 : s
+            if z_val[i] >= 1
+                continue
+            end
+            z_new = copy(round.(z_val))
+            z_new[i] = 1
+            #@show zvar
+            #@show z_val
+            #@show z_new
+            status = MOI.submit(m, MOI.HeuristicSolution(cb_data), zvar, z_val)
+            #println("I submitted a heuristic solution, and the status was: ", status)
+            #sleep(5)
+            if status == MOI.HEURISTIC_SOLUTION_ACCEPTED
+                z_val = z_new
+                improved = true
+            end
+        end
+        if !improved
+            println("Solution was not improved. Should be maximal")
+        else
+            println("A solution was improved")
+        end
+        #if rand() < 0.1
+            # You can terminate the callback as follows:
+        #    GRBterminate(backend(model))
+        #end
+        return
+    end
+
+    function greedy_callback_GRB(cb_data,cb_where::Cint)
+
+        if cb_where != GRB_CB_MIPNODE
+            return
+        end
+    
+        Gurobi.load_callback_variable_primal(cb_data, cb_where)
+        s = length(zvar)
+        z_val = callback_value.(Ref(cb_data), zvar)
+        @show z_val
+        MOI.submit(m, MOI.HeuristicSolution(cb_data), zvar, z_val)
+        
+        println("I submitted a heuristic solution, and the status was: ", status)
+
+        return
+        if status == MOI.HEURISTIC_SOLUTION_REJECTED
+            return
+        end
+
+        improved = false
+        for i = 1 : s
+            if z_val[i] >= 1
+                continue
+            end
+            z_new = copy(round.(z_val))
+            z_new[i] = 1
+            #@show zvar
+            #@show z_val
+            #@show z_new
+            status = MOI.submit(m, MOI.HeuristicSolution(cb_data), zvar, z_val)
+            #println("I submitted a heuristic solution, and the status was: ", status)
+            #sleep(5)
+            if status == MOI.HEURISTIC_SOLUTION_ACCEPTED
+                z_val = z_new
+                improved = true
+            end
+        end
+        if !improved
+            println("Solution was not improved. Should be maximal")
+        else
+            println("A solution was improved")
+        end
+        #if rand() < 0.1
+            # You can terminate the callback as follows:
+        #    GRBterminate(backend(model))
+        #end
+        return
+    end
+
+
+    if cbFlag
+        #MOI.set(m, MOI.HeuristicCallback(), greedy_callback)
+        MOI.set(m, Gurobi.CallbackFunction(), greedy_callback_GRB)
+    end
     X = zeros(nx,1)
 
+    iter = 1
     while true
         status = optimize!(m)
         z = JuMP.value.(zvar)
@@ -26,7 +132,8 @@ function AllVertex(A,B,b)
         if out==1
             break
         end
-
+        println("\nCollected sol", iter,"\n")
+        iter += 1
         X = hcat(X,x);
 
         #We force at least one constraint z[k] to be active in the complement
@@ -93,7 +200,7 @@ function MIPVertexSearchBase(A,B,b,K,s,nx,ny)
     # s  -> Number of nx-faces of D = {(x,y) : Ax+By <= b}
     ###########################################
     
-        m = Model(Gurobi.Optimizer)
+        m = direct_model(Gurobi.Optimizer())
     
         @variable(m, x[1:nx]);
         @variable(m, y[1:ny,1:s]);
