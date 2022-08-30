@@ -2,8 +2,11 @@ using LinearAlgebra
 
 n = 6;
 
-a = rand(1:4,n);
-
+#a = rand(1:4,n);
+a = zeros(n);
+for i=1:n
+    a[i] = i%4 + 1
+end
 
 A = zeros(2*n+3,1);
 A[1] = 1;

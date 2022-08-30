@@ -1,6 +1,29 @@
 using LinearAlgebra, JuMP, Gurobi, Polymake, Printf
 
 
+function verifysol(ver_model, zverify, z_val, outverify, out_val, xverify, yverify)
+
+    s = length(zverify)
+    for i = 1 : s
+        fix(zverify[i], z_val[i]; force = true)
+    end
+    fix(outverify, out_val; force = true)
+
+    #println("\nGoing to optimize\n")
+    optimize!(ver_model)
+    #println("\nDone\n")
+    status = termination_status(ver_model)
+
+    if status == INFEASIBLE
+        return false, nothing, nothing
+    end
+
+    xval = JuMP.value.(xverify)
+    yval = JuMP.value.(yverify)
+
+    #println("Opt status: ",status," Val: ", objective_value(ver_model))
+    return true, xval, yval
+end
 
 function AllVertex(A,B,b,cbFlag)
 
@@ -16,75 +39,34 @@ function AllVertex(A,B,b,cbFlag)
 
     (K,s) = getFaces_pmk(A,B,b,m,nx,ny) #Warning: this function is implicitly assuming that all inequalities are 
     
-    (m,zvar,xvar,outvar) = MIPVertexSearchBase(A,B,b,K,s,nx,ny);
-    function greedy_callback(cb_data)
+    (m,zvar,xvar,outvar,yvar) = MIPVertexSearchBase(A,B,b,K,s,nx,ny);
 
-        status = callback_node_status(cb_data, m)
-        #println("Entered callback with status",status) 
-        #if status != MOI.CALLBACK_NODE_STATUS_INTEGER ##This bothers me. It seems we're never called here
-        #    return
-        #end
-    
-        #Gurobi.load_callback_variable_primal(cb_data, cb_where)
-        s = length(zvar)
-        z_val = round.(callback_value.(Ref(cb_data), zvar))
-        status = MOI.submit(m, MOI.HeuristicSolution(cb_data), zvar, round.(z_val))
-        #@show z_val
-        #println("I submitted a heuristic solution, and the status was: ", status)
-
-        if status == MOI.HEURISTIC_SOLUTION_REJECTED
-            return
-        end
-
-        improved = false
-        for i = 1 : s
-            if z_val[i] >= 1
-                continue
-            end
-            z_new = copy(round.(z_val))
-            z_new[i] = 1
-            #@show zvar
-            #@show z_val
-            #@show z_new
-            status = MOI.submit(m, MOI.HeuristicSolution(cb_data), zvar, z_val)
-            #println("I submitted a heuristic solution, and the status was: ", status)
-            #sleep(5)
-            if status == MOI.HEURISTIC_SOLUTION_ACCEPTED
-                z_val = z_new
-                improved = true
-            end
-        end
-        if !improved
-            println("Solution was not improved. Should be maximal")
-        else
-            println("A solution was improved")
-        end
-        #if rand() < 0.1
-            # You can terminate the callback as follows:
-        #    GRBterminate(backend(model))
-        #end
-        return
-    end
+    ### this copy is for a verifier model
+    ### for technical reasons couldn't use copy method
+    (ver_model,zvar_ver,xvar_ver,outvar_ver,yvar_ver) = MIPVertexSearchBase(A,B,b,K,s,nx,ny);
+    set_silent(ver_model)
 
     function greedy_callback_GRB(cb_data,cb_where::Cint)
 
-        if cb_where != GRB_CB_MIPNODE
+        if cb_where != GRB_CB_MIPSOL
             return
         end
     
         Gurobi.load_callback_variable_primal(cb_data, cb_where)
         s = length(zvar)
         z_val = callback_value.(Ref(cb_data), zvar)
-        @show z_val
-        MOI.submit(m, MOI.HeuristicSolution(cb_data), zvar, z_val)
-        
-        println("I submitted a heuristic solution, and the status was: ", status)
+        out_val = callback_value(cb_data, outvar)
 
-        return
-        if status == MOI.HEURISTIC_SOLUTION_REJECTED
+        if out_val >= 1
             return
         end
 
+        feasible, x_val, y_val = verifysol(ver_model, zvar_ver, z_val, outvar_ver, out_val, xvar_ver, yvar_ver)
+        if !feasible
+            print("Error: Gurobi provided an invalid solution")
+            return
+        end
+       
         improved = false
         for i = 1 : s
             if z_val[i] >= 1
@@ -95,18 +77,51 @@ function AllVertex(A,B,b,cbFlag)
             #@show zvar
             #@show z_val
             #@show z_new
-            status = MOI.submit(m, MOI.HeuristicSolution(cb_data), zvar, z_val)
+            status = MOI.submit(m, MOI.HeuristicSolution(cb_data), zvar, z_new)
             #println("I submitted a heuristic solution, and the status was: ", status)
             #sleep(5)
             if status == MOI.HEURISTIC_SOLUTION_ACCEPTED
                 z_val = z_new
                 improved = true
+                println("Went in!")
+                return
+                sleep(5)
+            else
+                feasible, x_val, y_val = verifysol(ver_model, zvar_ver, z_new, outvar_ver, out_val, xvar_ver, yvar_ver)
+                if feasible
+                    println("Error: Gurobi rejected a valid better solution, not stopping")
+                    z_val = z_new
+                    improved = true
+                    return
+                    
+                    println("Test if passing more info fixes it")
+                    # @show size(zvar)
+                    # @show size(z_val)
+                    # @show size(xvar)
+                    # @show size(x_val)
+                    # @show size(yvar)
+                    # @show size(y_val)
+                    status = MOI.submit(m, MOI.HeuristicSolution(cb_data), vcat(zvar,xvar,vec(yvar),outvar), vcat(z_new,x_val,vec(y_val),out_val))
+                    println("I submitted a heuristic solution, and the status was: ", status,"  out ", out_val)
+
+                    jumpvars = vcat(zvar,xvar,vec(yvar),outvar)
+                    jumpvals = vcat(z_new,x_val,vec(y_val),out_val)
+                    dictionary = Dict(jumpvars .=> jumpvals)
+                    println(primal_feasibility_report(m, dictionary))
+                    #sleep(10)
+                #else
+                #    println("Well rejected solution")
+                    #sleep(5)
+                end
             end
         end
         if !improved
             println("Solution was not improved. Should be maximal")
+            #sleep(5)
+            GRBterminate(backend(m))
         else
-            println("A solution was improved")
+            println("A solution was improved") #should terminate too
+            #sleep(5)
         end
         #if rand() < 0.1
             # You can terminate the callback as follows:
@@ -132,7 +147,7 @@ function AllVertex(A,B,b,cbFlag)
         if out==1
             break
         end
-        println("\nCollected sol", iter,"\n")
+        println("\nCollected sol ", iter,"\n")
         iter += 1
         X = hcat(X,x);
 
@@ -141,7 +156,8 @@ function AllVertex(A,B,b,cbFlag)
         Ind = findall(a->a==0, vec(z));
         @constraint(m,sum(zvar[Ind]) + outvar>=1);
 
-        @constraint(m, sum(zvar) <= value); #this may be a bad idea, since it is adding a ineq parallel to obj
+        @constraint(ver_model,sum(zvar_ver[Ind]) + outvar_ver>=1);
+        #@constraint(m, sum(zvar) <= value); #this may be a bad idea, since it is adding a ineq parallel to obj
         #write_to_file(m, "modeliter.lp")
     end
     X = X[:,begin+1:end]
@@ -221,5 +237,5 @@ function MIPVertexSearchBase(A,B,b,K,s,nx,ny)
     
         @objective(m,Max, sum(z));
     
-        return m, z, x, out;
+        return m, z, x, out, y;
 end
