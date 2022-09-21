@@ -1,6 +1,34 @@
 using LinearAlgebra, JuMP, Gurobi, Polymake, Printf
 
 
+function computeBigMs(A,B,b)
+
+    (m,nx) = size(A);
+    (ny,) = size(B');
+
+    bigMs = -b
+
+    model = direct_model(Gurobi.Optimizer())
+    set_silent(model)
+    @variable(model, x[1:nx]);
+    @variable(model, y[1:ny]);
+    
+    @constraint(model, A*x + B*y .<=b);
+    
+    for i = 1:m
+        @objective(model, Min, sum(A[i,j]*x[j] for j=1:nx) + sum( B[i,j]*y[j] for j=1:ny));
+        optimize!(model)
+        status = termination_status(model)
+        #println(sum(A[i,j]*x[j] for j=1:nx) + sum( B[i,j]*y[j] for j=1:ny), " ", objective_value(model))
+        if status == OPTIMAL
+            bigMs[i] += (objective_value(model) - 1)
+        else
+            bigMs[i] = -1e6
+        end
+    end
+    return bigMs
+end
+
 function verifysol(ver_model, zverify, z_val, outverify, out_val, xverify, yverify)
 
     s = length(zverify)
@@ -9,9 +37,7 @@ function verifysol(ver_model, zverify, z_val, outverify, out_val, xverify, yveri
     end
     fix(outverify, out_val; force = true)
 
-    #println("\nGoing to optimize\n")
     optimize!(ver_model)
-    #println("\nDone\n")
     status = termination_status(ver_model)
 
     if status == INFEASIBLE
@@ -25,7 +51,7 @@ function verifysol(ver_model, zverify, z_val, outverify, out_val, xverify, yveri
     return true, xval, yval
 end
 
-function AllVertex(A,B,b,cbFlag)
+function AllVertex(A,B,b,cbFlag,bigMflag)
 
     (m,nx) = size(A);
     (ny,) = size(B');
@@ -37,26 +63,37 @@ function AllVertex(A,B,b,cbFlag)
     #independent normal vectors.
     ###############################################
 
-    (K,s) = getFaces_pmk(A,B,b,m,nx,ny) #Warning: this function is implicitly assuming that all inequalities are 
+    bigMarray = -1e6*ones(m)
+    if bigMflag
+        bigMarray = computeBigMs(A,B,b)
+    end
+
+    (K,s) = getFaces_pmk(A,B,b,m,nx,ny) #Warning: this function is implicitly assuming that all inequalities are facets
     
-    (m,zvar,xvar,outvar,yvar) = MIPVertexSearchBase(A,B,b,K,s,nx,ny);
+    (m,zvar,xvar,outvar,yvar) = MIPVertexSearchBase(A,B,b,K,s,nx,ny,bigMarray);
 
     ### this copy is for a verifier model
     ### for technical reasons couldn't use copy method
-    (ver_model,zvar_ver,xvar_ver,outvar_ver,yvar_ver) = MIPVertexSearchBase(A,B,b,K,s,nx,ny);
+    (ver_model,zvar_ver,xvar_ver,outvar_ver,yvar_ver) = MIPVertexSearchBase(A,B,b,K,s,nx,ny,bigMarray);
     set_silent(ver_model)
+
+    #println("Tolerances:")
+    #println(get_optimizer_attribute(m, "FeasibilityTol"))
+    #println(get_optimizer_attribute(m, "IntFeasTol"))
+    #set_optimizer_attribute(m, "FeasibilityTol", 1e-4)
+    #set_optimizer_attribute(m, "IntFeasTol", 1e-4)
 
     function greedy_callback_GRB(cb_data,cb_where::Cint)
 
         if cb_where != GRB_CB_MIPSOL
             return
         end
-    
+        
         Gurobi.load_callback_variable_primal(cb_data, cb_where)
         s = length(zvar)
         z_val = callback_value.(Ref(cb_data), zvar)
         out_val = callback_value(cb_data, outvar)
-
+        
         if out_val >= 1
             return
         end
@@ -66,10 +103,10 @@ function AllVertex(A,B,b,cbFlag)
             print("Error: Gurobi provided an invalid solution")
             return
         end
-       
+
         improved = false
         for i = 1 : s
-            if z_val[i] >= 1
+            if z_val[i] >= 0.5
                 continue
             end
             z_new = copy(round.(z_val))
@@ -77,19 +114,21 @@ function AllVertex(A,B,b,cbFlag)
             #@show zvar
             #@show z_val
             #@show z_new
+
+            #println("Submitting sol")
             status = MOI.submit(m, MOI.HeuristicSolution(cb_data), zvar, z_new)
-            #println("I submitted a heuristic solution, and the status was: ", status)
+            #println("Submitted a heuristic solution, and the status was: ", status)
             #sleep(5)
             if status == MOI.HEURISTIC_SOLUTION_ACCEPTED
                 z_val = z_new
                 improved = true
                 println("Went in!")
                 return
-                sleep(5)
+                #sleep(5)
             else
                 feasible, x_val, y_val = verifysol(ver_model, zvar_ver, z_new, outvar_ver, out_val, xvar_ver, yvar_ver)
                 if feasible
-                    println("Error: Gurobi rejected a valid better solution, not stopping")
+                    println("Warning: Gurobi rejected a valid better solution, not stopping")
                     z_val = z_new
                     improved = true
                     return
@@ -102,16 +141,18 @@ function AllVertex(A,B,b,cbFlag)
                     # @show size(yvar)
                     # @show size(y_val)
                     status = MOI.submit(m, MOI.HeuristicSolution(cb_data), vcat(zvar,xvar,vec(yvar),outvar), vcat(z_new,x_val,vec(y_val),out_val))
-                    println("I submitted a heuristic solution, and the status was: ", status,"  out ", out_val)
+                    println("Submitted a heuristic solution, and the status was: ", status,"  out ", out_val)
 
                     jumpvars = vcat(zvar,xvar,vec(yvar),outvar)
                     jumpvals = vcat(z_new,x_val,vec(y_val),out_val)
                     dictionary = Dict(jumpvars .=> jumpvals)
                     println(primal_feasibility_report(m, dictionary))
-                    #sleep(10)
+
+                    #println(vcat(zvar,xvar,vec(yvar),outvar), vcat(z_new,x_val,vec(y_val),out_val))
+                    #sleep(5)
                 #else
                 #    println("Well rejected solution")
-                    #sleep(5)
+                #    sleep(5)
                 end
             end
         end
@@ -123,16 +164,12 @@ function AllVertex(A,B,b,cbFlag)
             println("A solution was improved") #should terminate too
             #sleep(5)
         end
-        #if rand() < 0.1
-            # You can terminate the callback as follows:
-        #    GRBterminate(backend(model))
-        #end
+
         return
     end
 
 
     if cbFlag
-        #MOI.set(m, MOI.HeuristicCallback(), greedy_callback)
         MOI.set(m, Gurobi.CallbackFunction(), greedy_callback_GRB)
     end
     X = zeros(nx,1)
@@ -208,7 +245,7 @@ end
 
 ######################################################################################
 
-function MIPVertexSearchBase(A,B,b,K,s,nx,ny)
+function MIPVertexSearchBase(A,B,b,K,s,nx,ny,bigMarray)
 
     ###########################################
     # nx -> X-dimension
@@ -224,18 +261,24 @@ function MIPVertexSearchBase(A,B,b,K,s,nx,ny)
         @variable(m, 0<=out<=1, Int);
     
         @constraint(m, [i = 1:s], A*x + B*y[1:ny,i] .<=b);
-    
+        #println(bigMarray)
+        
         for i = 1:s
             Ind = findall(a->a==1, vec(K[i,:]));
             #if z[i] is activated, then sum(A[Ind,:]*x + B[Ind,:]*y[1:ny,i] - b[Ind]) == 0.
             #Otherwise, if z[i] = 0, then the constraint is trivially verified.
             #The constant -1e6 is a Big-M constraint.
-            @constraint(m, sum( A[Ind,:]*x + B[Ind,:]*y[1:ny,i] - b[Ind] )>= -1e6*(1-z[i])  );
+            #println(bigMarray[Ind]*(1-z[i]))
+
+            # Constraints are now decoupled. It leads to better performance
+            for j in Ind
+                @constraint(m, sum( A[j,k]*x[k] for k=1:nx) + sum(B[j,k]*y[k,i] for k=1:ny)- b[j] - bigMarray[j]*(1-z[i])  >= 0);
+            end
+            #@constraint(m, sum( A[Ind,:]*x + B[Ind,:]*y[1:ny,i] - b[Ind] - bigMarray[Ind]*(1-z[i]) ) .>= 0);
         end
     
         @constraint(m, sum(z) <= 2*s*(1-out));
     
         @objective(m,Max, sum(z));
-    
         return m, z, x, out, y;
 end
