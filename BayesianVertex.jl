@@ -3,17 +3,27 @@ using LinearAlgebra, JuMP, Gurobi, Polymake, Printf
 
 function computeBigMs(A,B,b)
 
-    (m,nx) = size(A);
-    (ny,) = size(B');
+    #(m,nx) = size(A);
+    m = size(A,1);
+    nx = size(A,2);
+    ny = size(B,2);
 
-    bigMs = -b
+    #(ny,) = size(B');
+
+    bigMs = -1e6*ones(m)
 
     model = direct_model(Gurobi.Optimizer())
     set_silent(model)
     @variable(model, x[1:nx]);
     @variable(model, y[1:ny]);
     
+    #next to lines are to force vectors to be interpreted matrices
+    A = reshape(A,m,nx)
+    B = reshape(B,m,ny)
+
     @constraint(model, A*x + B*y .<=b);
+
+    #@constraint(model, [i = 1:m], A[i]*x + B[i]*y <=b[i])
     
     for i = 1:m
         @objective(model, Min, sum(A[i,j]*x[j] for j=1:nx) + sum( B[i,j]*y[j] for j=1:ny));
@@ -53,8 +63,10 @@ end
 
 function AllVertex(A,B,b,cbFlag,bigMflag)
 
-    (m,nx) = size(A);
-    (ny,) = size(B');
+    #(m,nx) = size(A,1);
+    m = size(A,1);
+    nx = size(A,2);
+    ny = size(B,2);
 
     ###############################################
     #We recover all the faces of D = {Ax + By <= b}
@@ -259,6 +271,10 @@ function MIPVertexSearchBase(A,B,b,K,s,nx,ny,bigMarray)
         @variable(m, y[1:ny,1:s]);
         @variable(m, 0<=z[1:s]<=1, Int);
         @variable(m, 0<=out<=1, Int);
+
+        nrows = size(A,1);
+        A = reshape(A,nrows,nx)
+        B = reshape(B,nrows,ny)
     
         @constraint(m, [i = 1:s], A*x + B*y[1:ny,i] .<=b);
         #println(bigMarray)
