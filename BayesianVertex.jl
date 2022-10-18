@@ -225,6 +225,18 @@ function getFaces_pmk(A,B,b,m,nx,ny)
     allfaces_vec = allfaces_vec[begin+1:end-1] # The first and last lines are not faces
     
     faces_dim_nx = @convert_to Array{Int} graph.nodes_of_rank(HD,nx+1) #rank is one more than dimension    
+    #@show faces_dim_nx
+    #@show size(faces_dim_nx)
+
+    for i = 1:nx
+        faces_rank_i = @convert_to Array{Int} graph.nodes_of_rank(HD,i)
+        faces_dim_nx = vcat(faces_dim_nx, faces_rank_i)
+    end
+
+    #@show faces_dim_nx
+    #@show size(faces_dim_nx)
+    #@show size(allfaces_vec)
+
     s = length(faces_dim_nx)
     
     K = zeros(s,m)

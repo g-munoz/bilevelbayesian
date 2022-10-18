@@ -22,10 +22,12 @@ instancelist = ["LiuHart1994",
 "BenAyedBlair1990a",
 "ClarkWesterberg1990b",
 "MershaDempe2006Ex1",
-"TuyEtal2007Ex3",
+#"TuyEtal2007Ex3",
 "Bard1984a",
 "TuyEtal1993",
 "CandlerTownsley1982"]
+
+#instancelist = ["ClarkWesterberg1988"]
 
 times = Dict()
 vertex = Dict()
@@ -33,9 +35,17 @@ vertex = Dict()
 for name in instancelist
     #print(@sprintf("Would read BOLIBver2/JuliaExamples/%s.jl\n",name))
     include(@sprintf("BOLIBver2/JuliaExamples/%s.jl",name))
-    local A = vcat(Gx,gx) ##PENDING, MISSING THIS in b
-    local B = vcat(Gy,gy)
-    local d = vcat(-bG,-bg)
+    couplingtolower = true
+    (ncoupling,) = size(Gx)
+    if couplingtolower && ncoupling >= 1
+        local A = vcat(Gx,gx)
+        local B = vcat(Gy,gy)
+        local d = vcat(-bG,-bg)
+    else
+        local A = gx
+        local B = gy
+        local d = -bg
+    end
     println("\nRunning ", name,"\n")
     #@show size(A)
     times[name] = @elapsed local X = AllVertex(A,B,d,true,true)
