@@ -74,21 +74,22 @@ function AllVertex(A,B,b,cbFlag,bigMflag)
     #intersection of ny affine spaces with linearly
     #independent normal vectors.
     ###############################################
-
+    print("Running big M computation... ")
     bigMarray = -1e6*ones(m)
     if bigMflag
         bigMarray = computeBigMs(A,B,b)
     end
-
+    print("Done\nRunning faces computation... ")
     (K,s) = getFaces_pmk(A,B,b,m,nx,ny) #Warning: this function is implicitly assuming that all inequalities are facets
     
+    print("Done\nFormulating base MIP... ")
     (m,zvar,xvar,outvar,yvar) = MIPVertexSearchBase(A,B,b,K,s,nx,ny,bigMarray);
 
     ### this copy is for a verifier model
     ### for technical reasons couldn't use copy method
     (ver_model,zvar_ver,xvar_ver,outvar_ver,yvar_ver) = MIPVertexSearchBase(A,B,b,K,s,nx,ny,bigMarray);
     set_silent(ver_model)
-
+    print("Done\n")
     #println("Tolerances:")
     #println(get_optimizer_attribute(m, "FeasibilityTol"))
     #println(get_optimizer_attribute(m, "IntFeasTol"))
@@ -180,7 +181,7 @@ function AllVertex(A,B,b,cbFlag,bigMflag)
         return
     end
 
-
+    println("Running main MIP... ")
     if cbFlag
         MOI.set(m, Gurobi.CallbackFunction(), greedy_callback_GRB)
     end
@@ -219,11 +220,13 @@ end
 function getFaces_pmk(A,B,b,m,nx,ny)
     P = polytope.Polytope(INEQUALITIES=hcat(b,-A,-B)) ##Careful here on how Polymake takes the input
     
+    print("\n\tComputing Hasse Diagram ...")
     HD = P.HASSE_DIAGRAM
     allfaces_str = @sprintf("%s", HD.FACES) ## String with all faces
     allfaces_vec = split(allfaces_str, "\n")
     allfaces_vec = allfaces_vec[begin+1:end-1] # The first and last lines are not faces
     
+    print("Done.\n\tExtracting faces of dim <= nx...")
     faces_dim_nx = @convert_to Array{Int} graph.nodes_of_rank(HD,nx+1) #rank is one more than dimension    
     #@show faces_dim_nx
     #@show size(faces_dim_nx)
@@ -232,7 +235,7 @@ function getFaces_pmk(A,B,b,m,nx,ny)
         faces_rank_i = @convert_to Array{Int} graph.nodes_of_rank(HD,i)
         faces_dim_nx = vcat(faces_dim_nx, faces_rank_i)
     end
-
+    print("Done.\n\tFinding ineqs defining faces...")
     #@show faces_dim_nx
     #@show size(faces_dim_nx)
     #@show size(allfaces_vec)
@@ -264,6 +267,7 @@ function getFaces_pmk(A,B,b,m,nx,ny)
     	K[i,:] = ind	
 
     end
+    print("Done.\n")
     return K, s
 end
 

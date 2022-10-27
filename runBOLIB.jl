@@ -2,7 +2,7 @@ using FileIO, JLD2
 
 include("BayesianVertex.jl")
 
-instancelist = ["LiuHart1994",
+bolibinstances = ["LiuHart1994",
 "GlackinEtal2009",
 "BialasKarwan1984a",
 "ClarkWesterberg1988",
@@ -27,14 +27,29 @@ instancelist = ["LiuHart1994",
 "TuyEtal1993",
 "CandlerTownsley1982"]
 
+bolibdir = "BOLIBver2/JuliaExamples/"
+
 #instancelist = ["ClarkWesterberg1988"]
+
+coralinstances = [#"knapsack",
+"linderoth",
+#"milp_10_20_50_2310",
+#"milp_4_20_10_0110",
+"moore90_2",
+"moore90"]
+
+coraldir = "CoralLib/notInterdiction/"
+
 
 times = Dict()
 vertex = Dict()
 
+instancelist = coralinstances
+dir = coraldir
+
 for name in instancelist
     #print(@sprintf("Would read BOLIBver2/JuliaExamples/%s.jl\n",name))
-    include(@sprintf("BOLIBver2/JuliaExamples/%s.jl",name))
+    include(@sprintf("%s%s.jl",dir,name))
     couplingtolower = true
     (ncoupling,) = size(Gx)
     if couplingtolower && ncoupling >= 1
