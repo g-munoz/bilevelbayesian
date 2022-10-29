@@ -309,7 +309,7 @@ function MIPVertexSearchBase(A,B,b,K,s,nx,ny,bigMarray)
             #@constraint(m, sum( A[Ind,:]*x + B[Ind,:]*y[1:ny,i] - b[Ind] - bigMarray[Ind]*(1-z[i]) ) .>= 0);
         end
     
-        @constraint(m, sum(z) <= 2*s*(1-out));
+        @constraint(m, sum(z) <= s*(1-out));
     
         @objective(m,Max, sum(z));
         return m, z, x, out, y;
