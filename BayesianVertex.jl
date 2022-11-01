@@ -61,10 +61,40 @@ function verifysol(ver_model, zverify, z_val, outverify, out_val, xverify, yveri
     return true, xval, yval
 end
 
-function AllVertex(A,B,b,cbFlag,bigMflag)
+function findLabels(A, B, b, K, s, bigMarray, x_fix)
+    nrows = size(A,1);
+    nx = size(A,2);
+    ny = size(B,2);
+ 
+    print("\nFormulating base MIP... ")
+    (m,zvar,xvar,outvar,yvar) = MIPVertexSearchBase(A,B,b,K,s,nx,ny,bigMarray);
+    set_silent(m)
+    print("Done\n")
+    
+    for i = 1 : nx
+        fix(xvar[i], x_fix[i]; force = true)
+    end
+
+    println("Running fixed MIP... ")
+    optimize!(m)
+    status = termination_status(m)
+    if status == OPTIMAL
+        z = JuMP.value.(zvar)
+        out = JuMP.value.(outvar);
+        return out!=1, z
+    else
+        println(status)
+    end
+    return false, NaN
+end
+
+
+
+
+function AllVertex(A,B,b,cbFlag, K,s, bigMarray)
 
     #(m,nx) = size(A,1);
-    m = size(A,1);
+    nrows = size(A,1);
     nx = size(A,2);
     ny = size(B,2);
 
@@ -74,15 +104,15 @@ function AllVertex(A,B,b,cbFlag,bigMflag)
     #intersection of ny affine spaces with linearly
     #independent normal vectors.
     ###############################################
-    print("Running big M computation... ")
-    bigMarray = -1e6*ones(m)
-    if bigMflag
-        bigMarray = computeBigMs(A,B,b)
-    end
-    print("Done\nRunning faces computation... ")
-    (K,s) = getFaces_pmk(A,B,b,m,nx,ny) #Warning: this function is implicitly assuming that all inequalities are facets
+    # print("Running big M computation... ")
+    # bigMarray = -1e6*ones(m)
+    # if bigMflag
+    #     bigMarray = computeBigMs(A,B,b)
+    # end
+    #print("Done\nRunning faces computation... ")
+    #(K,s) = getFaces_pmk(A,B,b,m,nx,ny) #Warning: this function is implicitly assuming that all inequalities are facets
     
-    print("Done\nFormulating base MIP... ")
+    print("\nFormulating base MIP... ")
     (m,zvar,xvar,outvar,yvar) = MIPVertexSearchBase(A,B,b,K,s,nx,ny,bigMarray);
 
     ### this copy is for a verifier model
@@ -217,8 +247,14 @@ end
 
 ######################################################################################
 
-function getFaces_pmk(A,B,b,m,nx,ny)
+function getFaces_pmk(A,B,b)
+    m = size(A,1);
+    nx = size(A,2);
+    ny = size(B,2);
+
     P = polytope.Polytope(INEQUALITIES=hcat(b,-A,-B)) ##Careful here on how Polymake takes the input
+    
+    println("\n\tDimension of polytope is ", polytope.dim(P), " ambient ", nx+ny )
     
     print("\n\tComputing Hasse Diagram ...")
     HD = P.HASSE_DIAGRAM
@@ -313,4 +349,104 @@ function MIPVertexSearchBase(A,B,b,K,s,nx,ny,bigMarray)
     
         @objective(m,Max, sum(z));
         return m, z, x, out, y;
+end
+
+function findSteps(A, B, b, K, s, x_fix, zvals)
+    
+    nrows = size(A,1);
+    nx = size(A,2);
+    ny = size(B,2);
+    
+    A = reshape(A,nrows,nx)
+    B = reshape(B,nrows,ny)
+
+    ej = zeros(nx,1)
+    tvals = zeros(nx,1)
+
+    success = true
+
+    for ind = 1:nx
+        ej[ind] = 1
+
+        m = direct_model(Gurobi.Optimizer()) ##need to creat stoch model for each j
+        set_silent(m)
+        @variable(m, y[1:ny,1:s]); ##shouldn't create all variables
+        @variable(m, t);
+
+        for i = 1:s
+            for j=1:nrows
+                @constraint(m, sum( A[j,k]*(x_fix[k] + t*ej[k]) for k=1:nx) + sum(B[j,k]*y[k,i] for k=1:ny) <= b[j]);
+            end
+        end  
+            
+        for i = 1:s
+            if zvals[i] < 0.5
+                continue
+            end
+            Ind = findall(a->a==1, vec(K[i,:]));
+            for j in Ind
+                @constraint(m, sum( A[j,k]*(x_fix[k]+ t*ej[k]) for k=1:nx) + sum(B[j,k]*y[k,i] for k=1:ny) >= b[j]);
+            end
+        
+        end  
+        @objective(m, Max, t);
+        optimize!(m)
+        status = termination_status(m)
+        if status != OPTIMAL
+            println("Error when finding direction ", status)
+            #write_to_file(m, "modelstep.lp")
+            tvals[ind] = NaN
+            success = false
+        else
+            tvals[ind] = JuMP.value.(t)
+            if tvals[ind] <= 1E-8
+                write_to_file(m, "modelstep.lp")
+            end
+        end
+        ej[ind] = 0
+    end
+    
+    return success, tvals
+end
+
+function solveLeader(A, B, b, K, s, dl, zvals)
+    
+    nrows = size(A,1);
+    nx = size(A,2);
+    ny = size(B,2);
+
+    m = direct_model(Gurobi.Optimizer())
+    set_silent(m)
+    @variable(m, x[1:nx]);
+    @variable(m, y[1:ny,1:s]); ##shouldn't create all variables
+    
+    A = reshape(A,nrows,nx)
+    B = reshape(B,nrows,ny)
+    
+    for i = 1:s
+        for j=1:nrows
+            @constraint(m, sum( A[j,k]*x[k] for k=1:nx) + sum(B[j,k]*y[k,i] for k=1:ny) <= b[j]);
+        end
+    end  
+        
+    for i = 1:s
+        if zvals[i] < 0.5
+            continue
+        end
+        Ind = findall(a->a==1, vec(K[i,:]));
+        for j in Ind
+            @constraint(m, sum( A[j,k]*x[k] for k=1:nx) + sum(B[j,k]*y[k,i] for k=1:ny) >= b[j]);
+        end
+    
+    end  
+    @objective(m, Min, dot(dl,x));
+    optimize!(m)
+    status = termination_status(m)
+    if status != OPTIMAL
+        println("Error in leader problem", status)
+        return NaN
+    end
+    
+    return JuMP.value.(x), objective_value(m)
+
 end
