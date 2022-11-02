@@ -215,15 +215,20 @@ timesstoch = Dict()
 valsexact = Dict()
 valsstoch = Dict()
 
+timesfacelattice = Dict()
+
 vertex = Dict()
 
 instancelist = bolibinstances
 dir = bolibdir
 
+instancelist = [ARGS[1]]
+
 for name in instancelist
     println("\n========\n Running ", name, "\n=========\n")
     #print(@sprintf("Would read BOLIBver2/JuliaExamples/%s.jl\n",name))
-    include(@sprintf("%s%s.jl",dir,name))
+    #include(@sprintf("%s%s.jl",dir,name))
+    include(@sprintf("%s",name))
     couplingtolower = true
     (ncoupling,) = size(Gx)
     if couplingtolower && ncoupling >= 1
@@ -246,23 +251,27 @@ for name in instancelist
     print("Done\n")
 
     print("\nRunning faces computation... ")
+    start = time()
     (K,s) = getFaces_pmk(A,B,b) #Warning: this function is implicitly assuming that all inequalities are facets    
+    timesfacelattice[name] = time() - start
     print("Done\n")
     #continue
     ######## Sampling of follower cost ###########
 
-    N = 10
+    N = 100
     csample = zeros(N, ny)
     for i=1:N 
         csample[i,:] = samplevector_unitsphere(ny)
     end 
+
+    runtimeexact = parse(Int,ARGS[2])
 
     #### Exact method ####
     runExact = true
     minval = Inf
     if runExact
         start = time()
-        local X = AllVertex(A, B, b,true, K, s, bigMarray)
+        local X = AllVertex(A, B, b,true, K, s, bigMarray, runtimeexact)
         vertex[name] = X
 
         print("\nVertices are:\n")
@@ -289,7 +298,7 @@ for name in instancelist
 
     #### Stochastic method ####
     runStoch = true
-    Nsamplesx = 5
+    Nsamplesx = 100
     if runStoch
         start = time()
         bestx = zeros(nx,1)
@@ -365,7 +374,7 @@ for name in instancelist
             end
         end
         timesstoch[name] = time() - start
-        valsstoch[name] = minval
+        valsstoch[name] = bestxval
     end
 
     # println("========================================")
@@ -380,5 +389,5 @@ end
 
 println("\n========\n Summary \n=========\n")
 for name in instancelist
-    println(name," Gap ", (valsexact[name] - valsstoch[name])/valsexact[name], " Times ", timesexact[name], " ", timesstoch[name] )
+    println("SUMMARY: ", name, " Vals ", valsexact[name], " ", valsstoch[name], " Gap ", (valsexact[name] - valsstoch[name])/valsexact[name], " Times ", timesexact[name], " ", timesstoch[name], " FL time ", timesfacelattice[name] )
 end

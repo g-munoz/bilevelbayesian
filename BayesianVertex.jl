@@ -91,12 +91,13 @@ end
 
 
 
-function AllVertex(A,B,b,cbFlag, K,s, bigMarray)
+function AllVertex(A,B,b,cbFlag, K,s, bigMarray, runtimeexact)
 
     #(m,nx) = size(A,1);
     nrows = size(A,1);
     nx = size(A,2);
     ny = size(B,2);
+    start = time()
 
     ###############################################
     #We recover all the faces of D = {Ax + By <= b}
@@ -219,6 +220,11 @@ function AllVertex(A,B,b,cbFlag, K,s, bigMarray)
 
     iter = 1
     while true
+        elapsed = time() - start
+        if runtimeexact - elapsed < 0
+            break
+        end
+        set_time_limit_sec(m, runtimeexact - elapsed )
         status = optimize!(m)
         z = JuMP.value.(zvar)
         x = JuMP.value.(xvar)
