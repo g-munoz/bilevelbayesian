@@ -215,6 +215,8 @@ timesstoch = Dict()
 valsexact = Dict()
 valsstoch = Dict()
 
+errstoch = Dict()
+
 timesfacelattice = Dict()
 
 vertex = Dict()
@@ -304,10 +306,16 @@ for name in instancelist
         bestx = zeros(nx,1)
         bestxval = Inf
 
+        seenlabels = Set()
         for i=1:Nsamplesx
             x_fix = samplevector_box(nx, xbox)
             #x_fix = [0.5; 2.0]
             found, zvals = findLabels(A, B, b, K, s, bigMarray, x_fix)
+
+            Ind = findall(a->a>=0.5, vec(zvals));
+
+            push!(seenlabels,Set(Ind))
+
             if found
                 d = zeros(nx,1)
                 success, t = findSteps(A, B, b, K, s, x_fix, zvals)
@@ -375,6 +383,21 @@ for name in instancelist
         end
         timesstoch[name] = time() - start
         valsstoch[name] = bestxval
+
+        ## Error computation
+        seencount = 0
+        for i=1:Nsamplesx
+            x_fix = samplevector_box(nx, xbox)
+            found, zvals = findLabels(A, B, b, K, s, bigMarray, x_fix)
+
+            Ind = findall(a->a>=0.5, vec(zvals));
+            if found && Set(Ind) in seenlabels
+                println("Seen!")
+                seencount += 1
+            end
+        end
+        errstoch[name] = 1- seencount/Nsamplesx
+
     end
 
     # println("========================================")
@@ -389,5 +412,5 @@ end
 
 println("\n========\n Summary \n=========\n")
 for name in instancelist
-    println("SUMMARY: ", name, " Vals ", valsexact[name], " ", valsstoch[name], " Gap ", (valsexact[name] - valsstoch[name])/valsexact[name], " Times ", timesexact[name], " ", timesstoch[name], " FL time ", timesfacelattice[name] )
+    println("SUMMARY: ", name, " Vals ", valsexact[name], " ", valsstoch[name], " Gap ", (valsexact[name] - valsstoch[name])/valsexact[name], " Err ", errstoch[name], " Times ", timesexact[name], " ", timesstoch[name], " FL time ", timesfacelattice[name] )
 end

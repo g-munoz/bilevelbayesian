@@ -239,7 +239,7 @@ function AllVertex(A,B,b,cbFlag, K,s, bigMarray, runtimeexact)
 
         #We force at least one constraint z[k] to be active in the complement
         #of z. If this is not possibe, out is activated
-        Ind = findall(a->a==0, vec(z));
+        Ind = findall(a->a<=0.5, vec(z)); #the 0.5 is for numerical concerns
         @constraint(m,sum(zvar[Ind]) + outvar>=1);
 
         @constraint(ver_model,sum(zvar_ver[Ind]) + outvar_ver>=1);
