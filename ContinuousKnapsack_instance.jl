@@ -23,5 +23,13 @@ lb = 0;
 b = vcat( [ub; -lb; 0], ones(n,1), zeros(n,1));
 
 #objective is Max sum(y) - b, then we make it min
-Fx = [1]
+Fx = [1/4]
 Fy = -ones(n,1)
+
+Gx = []
+Gy = []
+
+#ugly hack to match parsing
+gx = A
+gy = B
+bg = -b

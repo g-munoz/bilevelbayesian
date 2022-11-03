@@ -224,15 +224,28 @@ vertex = Dict()
 instancelist = bolibinstances
 dir = bolibdir
 
-instancelist = [ARGS[1]]
+couplingtolower = true
+if ARGS[1] == "knapsack"
+    instancelist = ["ContinuousKnapsack_instance.jl"]
+    couplingtolower = false
+else
+    instancelist = [ARGS[1]]
+end
 
 for name in instancelist
     println("\n========\n Running ", name, "\n=========\n")
     #print(@sprintf("Would read BOLIBver2/JuliaExamples/%s.jl\n",name))
     #include(@sprintf("%s%s.jl",dir,name))
-    if name != "knapsack"
-        include(@sprintf("%s",name))
-        couplingtolower = true
+
+    
+    # knapflag = false
+    # if name == "knapsack"
+    #     name = "ContinuousKnapsack_instance.jl"
+    #     knapflag = true
+    # end
+    include(@sprintf("%s",name))
+    
+    #if !knapflag
         (ncoupling,) = size(Gx)
         if couplingtolower && ncoupling >= 1
             local A = vcat(Gx,gx)
@@ -243,30 +256,37 @@ for name in instancelist
             local B = gy
             local b = -bg
         end
-    else
-        include("ContinuousKnapsack_instance.jl")
-        n = parse(Int,ARGS[3]);
-        a = rand(1:4,n);
+    #else
+    #     n = parse(Int, ARGS[3]);
 
-        A = zeros(2*n+3,1);
-        A[1] = 1;
-        A[2] = -1;
-        A[3] = -1;
+    #     a = rand(1:4,n);
+    #     #a = zeros(n);
+    #     #for i=1:n
+    #     #    a[i] = i%4 + 1
+    #     #end
 
-        B = vcat(zeros(3,n),Matrix(1.0I, n, n),Matrix(-1.0I, n, n));
+    #     A = zeros(2*n+3,1);
+    #     A[1] = 1;
+    #     A[2] = -1;
+    #     A[3] = -1;
 
-        B[3,1:n] = a;
+    #     B = vcat(zeros(3,n),Matrix(1.0I, n, n),Matrix(-1.0I, n, n));
 
-        ub = sum(a);
-        lb = 0;
+    #     B[3,1:n] = a;
 
-        b = vcat( [ub; -lb; 0], ones(n,1), zeros(n,1));
+    #     ub = sum(a);
+    #     lb = 0;
 
-        #objective is Max sum(y) - b, then we make it min
-        Fx = [1/2]
-        Fy = -ones(n,1)
-    end
+    #     b = vcat( [ub; -lb; 0], ones(n,1), zeros(n,1));
 
+    #     #objective is Max sum(y) - b, then we make it min
+    #     Fx = [1]
+    #     Fy = -ones(n,1)
+
+    #     Gx = []
+    #     Gy = []
+    # end
+    
     A,B,b,xbox = checkBounded(A,B,b,1000) #We add artificial bounds if we need to
     nx = size(A,2);
     ny = size(B,2);
@@ -336,11 +356,10 @@ for name in instancelist
             #x_fix = [0.5; 2.0]
             found, zvals = findLabels(A, B, b, K, s, bigMarray, x_fix)
 
-            Ind = findall(a->a>=0.5, vec(zvals));
-
-            push!(seenlabels,Set(Ind))
-
             if found
+                Ind = findall(a->a>=0.5, vec(zvals));
+                push!(seenlabels,Set(Ind))
+
                 d = zeros(nx,1)
                 success, t = findSteps(A, B, b, K, s, x_fix, zvals)
                 if !success #something strange happened in steps. Happening in CandlerTownsley1982
@@ -414,10 +433,12 @@ for name in instancelist
             x_fix = samplevector_box(nx, xbox)
             found, zvals = findLabels(A, B, b, K, s, bigMarray, x_fix)
 
-            Ind = findall(a->a>=0.5, vec(zvals));
-            if found && Set(Ind) in seenlabels
-                println("Seen!")
-                seencount += 1
+            if found 
+                Ind = findall(a->a>=0.5, vec(zvals));
+                if Set(Ind) in seenlabels
+                    println("Seen!")
+                    seencount += 1
+                end
             end
         end
         errstoch[name] = 1- seencount/Nsamplesx
