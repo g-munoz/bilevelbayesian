@@ -1,12 +1,12 @@
 using LinearAlgebra
 
-n = 7;
+n = 6;
 
-#a = rand(1:4,n);
-a = zeros(n);
-for i=1:n
-    a[i] = i%4 + 1
-end
+a = rand(1:4,n);
+#a = zeros(n);
+#for i=1:n
+#    a[i] = i%4 + 1
+#end
 
 A = zeros(2*n+3,1);
 A[1] = 1;
@@ -21,3 +21,7 @@ ub = sum(a);
 lb = 0;
 
 b = vcat( [ub; -lb; 0], ones(n,1), zeros(n,1));
+
+#objective is Max sum(y) - b, then we make it min
+Fx = [1]
+Fy = -ones(n,1)

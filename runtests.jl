@@ -230,17 +230,41 @@ for name in instancelist
     println("\n========\n Running ", name, "\n=========\n")
     #print(@sprintf("Would read BOLIBver2/JuliaExamples/%s.jl\n",name))
     #include(@sprintf("%s%s.jl",dir,name))
-    include(@sprintf("%s",name))
-    couplingtolower = true
-    (ncoupling,) = size(Gx)
-    if couplingtolower && ncoupling >= 1
-        local A = vcat(Gx,gx)
-        local B = vcat(Gy,gy)
-        local b = vcat(-bG,-bg)
+    if name != "knapsack"
+        include(@sprintf("%s",name))
+        couplingtolower = true
+        (ncoupling,) = size(Gx)
+        if couplingtolower && ncoupling >= 1
+            local A = vcat(Gx,gx)
+            local B = vcat(Gy,gy)
+            local b = vcat(-bG,-bg)
+        else
+            local A = gx
+            local B = gy
+            local b = -bg
+        end
     else
-        local A = gx
-        local B = gy
-        local b = -bg
+        include("ContinuousKnapsack_instance.jl")
+        n = parse(Int,ARGS[3]);
+        a = rand(1:4,n);
+
+        A = zeros(2*n+3,1);
+        A[1] = 1;
+        A[2] = -1;
+        A[3] = -1;
+
+        B = vcat(zeros(3,n),Matrix(1.0I, n, n),Matrix(-1.0I, n, n));
+
+        B[3,1:n] = a;
+
+        ub = sum(a);
+        lb = 0;
+
+        b = vcat( [ub; -lb; 0], ones(n,1), zeros(n,1));
+
+        #objective is Max sum(y) - b, then we make it min
+        Fx = [1/2]
+        Fy = -ones(n,1)
     end
 
     A,B,b,xbox = checkBounded(A,B,b,1000) #We add artificial bounds if we need to
