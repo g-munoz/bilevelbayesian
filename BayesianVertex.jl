@@ -241,6 +241,7 @@ function AllVertex(A,B,b,cbFlag, K,s, bigMarray, runtimeexact)
         X = hcat(X,x);
         z_all += z
 
+
         #We force at least one constraint z[k] to be active in the complement
         #of z. If this is not possibe, out is activated
         Ind = findall(a->a<=0.5, vec(z)); #the 0.5 is for numerical concerns
@@ -252,8 +253,8 @@ function AllVertex(A,B,b,cbFlag, K,s, bigMarray, runtimeexact)
     end
     X = X[:,begin+1:end]
     used_faces = count(a->a>=0.5, vec(z_all))
-    print("Used faces "+used_faces+"\n")
-    return X
+    #print("Used faces ",used_faces," of ", s,"\n")
+    return X,used_faces
 end
 
 ######################################################################################

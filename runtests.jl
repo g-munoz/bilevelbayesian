@@ -220,6 +220,7 @@ ncons = Dict()
 
 exactsupportsize = Dict()
 stochsupportsize = Dict()
+totalfaces = Dict()
 
 errstoch = Dict()
 
@@ -328,8 +329,11 @@ for name in instancelist
     minval = Inf
     if runExact
         start = time()
-        local X = AllVertex(A, B, b,true, K, s, bigMarray, runtimeexact)
+        local (X,used_faces) = AllVertex(A, B, b,true, K, s, bigMarray, runtimeexact)
         vertex[name] = X
+
+	exactsupportsize[name] = used_faces
+	totalfaces[name] = s
 
         print("\nVertices are:\n")
         @show vertex
@@ -438,6 +442,9 @@ for name in instancelist
         timesstoch[name] = time() - start
         valsstoch[name] = bestxval
 
+
+	stochsupportsize[name] = 0
+
         ## Error computation
         seencount = 0
         for i=1:Nsamplesx
@@ -468,5 +475,5 @@ end
 
 println("\n========\n Summary \n=========\n")
 for name in instancelist
-    println("SUMMARY: ", name, " Vals ", valsexact[name], " ", valsstoch[name], " Gap ", (valsexact[name] - valsstoch[name])/valsexact[name], " Err ", errstoch[name], " Times ", timesexact[name], " ", timesstoch[name], " FL time ", timesfacelattice[name], " Dim ", dims[name], " Cons ", ncons[name], " Stoch Supp", stochsupportsize[name], " Exact Supp ", exactsupportsize[name] )
+    println("SUMMARY: ", name, " Vals ", valsexact[name], " ", valsstoch[name], " Gap ", (valsexact[name] - valsstoch[name])/valsexact[name], " Err ", errstoch[name], " Times ", timesexact[name], " ", timesstoch[name], " FL time ", timesfacelattice[name], " Dim ", dims[name], " Cons ", ncons[name]," Exact Supp ", exactsupportsize[name], " Stoch Supp ", stochsupportsize[name], " NFaces ", totalfaces[name] )
 end
