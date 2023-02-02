@@ -215,6 +215,12 @@ timesstoch = Dict()
 valsexact = Dict()
 valsstoch = Dict()
 
+dims = Dict()
+ncons = Dict()
+
+exactsupportsize = Dict()
+stochsupportsize = Dict()
+
 errstoch = Dict()
 
 timesfacelattice = Dict()
@@ -290,6 +296,11 @@ for name in instancelist
     A,B,b,xbox = checkBounded(A,B,b,1000) #We add artificial bounds if we need to
     nx = size(A,2);
     ny = size(B,2);
+    m = size(A,1);
+
+    dims[name] = nx+ny;
+    ncons[name] = m;
+    
 
     #### Common computations ####
     print("Running big M computation... ")
@@ -457,5 +468,5 @@ end
 
 println("\n========\n Summary \n=========\n")
 for name in instancelist
-    println("SUMMARY: ", name, " Vals ", valsexact[name], " ", valsstoch[name], " Gap ", (valsexact[name] - valsstoch[name])/valsexact[name], " Err ", errstoch[name], " Times ", timesexact[name], " ", timesstoch[name], " FL time ", timesfacelattice[name] )
+    println("SUMMARY: ", name, " Vals ", valsexact[name], " ", valsstoch[name], " Gap ", (valsexact[name] - valsstoch[name])/valsexact[name], " Err ", errstoch[name], " Times ", timesexact[name], " ", timesstoch[name], " FL time ", timesfacelattice[name], " Dim ", dims[name], " Cons ", ncons[name], " Stoch Supp", stochsupportsize[name], " Exact Supp ", exactsupportsize[name] )
 end

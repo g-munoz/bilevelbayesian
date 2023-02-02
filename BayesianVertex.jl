@@ -219,6 +219,9 @@ function AllVertex(A,B,b,cbFlag, K,s, bigMarray, runtimeexact)
     X = zeros(nx,1)
 
     iter = 1
+
+    z_all = zeros(s) #array to count which faces are used at some point
+
     while true
         elapsed = time() - start
         if runtimeexact - elapsed < 0
@@ -236,6 +239,7 @@ function AllVertex(A,B,b,cbFlag, K,s, bigMarray, runtimeexact)
         println("\nCollected sol ", iter,"\n")
         iter += 1
         X = hcat(X,x);
+        z_all += z
 
         #We force at least one constraint z[k] to be active in the complement
         #of z. If this is not possibe, out is activated
@@ -247,7 +251,8 @@ function AllVertex(A,B,b,cbFlag, K,s, bigMarray, runtimeexact)
         #write_to_file(m, "modeliter.lp")
     end
     X = X[:,begin+1:end]
-  
+    used_faces = count(a->a>=0.5, vec(z_all))
+    print("Used faces "+used_faces+"\n")
     return X
 end
 
