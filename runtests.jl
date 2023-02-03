@@ -366,12 +366,20 @@ for name in instancelist
         bestxval = Inf
 
         seenlabels = Set()
+        
+        z_all = zeros(s) #To count the faces used
+
         for i=1:Nsamplesx
             x_fix = samplevector_box(nx, xbox)
             #x_fix = [0.5; 2.0]
             found, zvals = findLabels(A, B, b, K, s, bigMarray, x_fix)
 
+            #print(size(z_all), " ", size(zvals))
+            
+
             if found
+
+                z_all += zvals
                 Ind = findall(a->a>=0.5, vec(zvals));
                 push!(seenlabels,Set(Ind))
 
@@ -439,11 +447,13 @@ for name in instancelist
                 end
             end
         end
+
+        used_faces = count(a->a>=0.5, vec(z_all))
+
         timesstoch[name] = time() - start
         valsstoch[name] = bestxval
 
-
-	stochsupportsize[name] = 0
+	    stochsupportsize[name] = used_faces
 
         ## Error computation
         seencount = 0
