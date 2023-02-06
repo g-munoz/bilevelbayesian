@@ -279,6 +279,11 @@ function getFaces_pmk(A,B,b)
     #@show faces_dim_nx
     #@show size(faces_dim_nx)
 
+    
+    faces_dim_nx_MC = @convert_to Array{Int} graph.nodes_of_rank(HD,nx+1) #Dimension nx only, for MC
+    s_MC = length(faces_dim_nx_MC)
+    K_MC = zeros(s_MC,m)
+
     for i = 1:nx
         faces_rank_i = @convert_to Array{Int} graph.nodes_of_rank(HD,i)
         faces_dim_nx = vcat(faces_dim_nx, faces_rank_i)
@@ -315,8 +320,31 @@ function getFaces_pmk(A,B,b)
     	K[i,:] = ind	
 
     end
+
+    for i = 1 : s_MC
+    	face_string = allfaces_vec[faces_dim_nx_MC[i]+1][begin+1:end-1] #index of the faces of dim x start at 0. Begin and end are to remove brackets and then be able to cast
+    	
+    	vertices_in_face = @convert_to Array{Int} face_string
+    	vertices_in_face = vertices_in_face .+ 1 #again, the vertex indices start at 0 so we correct them
+    	
+    	ineqs = P.VERTICES_IN_INEQUALITIES[:,vertices_in_face] #boolean sparse matrix, row = inequality. Returns all inequalities tight at each vertex
+    	
+    	ind = zeros(1,m) #this will indicate the inequalities that are tight for ALL vertices
+    	for row = 1 : m
+    		#this piece of code should be done in one line, but the structure of polymake SparseBoolVec is strange
+    		alltrue = true
+    		for val in ineqs[row,:]
+    			alltrue = alltrue && val 
+    		end	
+    		if alltrue
+    			ind[row] = 1
+    		end
+    	end
+    	K_MC[i,:] = ind	
+
+    end
     print("Done.\n")
-    return K, s
+    return K, s, K_MC, s_MC
 end
 
 ######################################################################################

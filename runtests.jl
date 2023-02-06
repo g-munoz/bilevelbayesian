@@ -221,6 +221,7 @@ ncons = Dict()
 exactsupportsize = Dict()
 stochsupportsize = Dict()
 totalfaces = Dict()
+stochtotalfaces = Dict()
 
 errstoch = Dict()
 
@@ -310,7 +311,7 @@ for name in instancelist
 
     print("\nRunning faces computation... ")
     start = time()
-    (K,s) = getFaces_pmk(A,B,b) #Warning: this function is implicitly assuming that all inequalities are facets    
+    (K,s, K_MC, s_MC) = getFaces_pmk(A,B,b) #Warning: this function is implicitly assuming that all inequalities are facets    
     timesfacelattice[name] = time() - start
     print("Done\n")
     #continue
@@ -334,6 +335,7 @@ for name in instancelist
 
 	exactsupportsize[name] = used_faces
 	totalfaces[name] = s
+    stochtotalfaces[name] = s_MC
 
         print("\nVertices are:\n")
         @show vertex
@@ -367,12 +369,12 @@ for name in instancelist
 
         seenlabels = Set()
         
-        z_all = zeros(s) #To count the faces used
+        z_all = zeros(s_MC) #To count the faces used
 
         for i=1:Nsamplesx
             x_fix = samplevector_box(nx, xbox)
             #x_fix = [0.5; 2.0]
-            found, zvals = findLabels(A, B, b, K, s, bigMarray, x_fix)
+            found, zvals = findLabels(A, B, b, K_MC, s_MC, bigMarray, x_fix)
 
             #print(size(z_all), " ", size(zvals))
             
@@ -384,7 +386,7 @@ for name in instancelist
                 push!(seenlabels,Set(Ind))
 
                 d = zeros(nx,1)
-                success, t = findSteps(A, B, b, K, s, x_fix, zvals)
+                success, t = findSteps(A, B, b, K_MC, s_MC, x_fix, zvals)
                 if !success #something strange happened in steps. Happening in CandlerTownsley1982
                     continue
                 end
@@ -427,7 +429,7 @@ for name in instancelist
                 # @show d
                 # @show newd[1:nx]
 
-                xopt, optval = solveLeader(A, B, b, K, s, d, zvals)
+                xopt, optval = solveLeader(A, B, b, K_MC, s_MC, d, zvals)
 
                 ## sanity check ##
                 # @show x_fix
@@ -459,7 +461,7 @@ for name in instancelist
         seencount = 0
         for i=1:Nsamplesx
             x_fix = samplevector_box(nx, xbox)
-            found, zvals = findLabels(A, B, b, K, s, bigMarray, x_fix)
+            found, zvals = findLabels(A, B, b, K_MC, s_MC, bigMarray, x_fix)
 
             if found 
                 Ind = findall(a->a>=0.5, vec(zvals));
@@ -485,5 +487,5 @@ end
 
 println("\n========\n Summary \n=========\n")
 for name in instancelist
-    println("SUMMARY: ", name, " Vals ", valsexact[name], " ", valsstoch[name], " Gap ", (valsexact[name] - valsstoch[name])/valsexact[name], " Err ", errstoch[name], " Times ", timesexact[name], " ", timesstoch[name], " FL time ", timesfacelattice[name], " Dim ", dims[name], " Cons ", ncons[name]," Exact Supp ", exactsupportsize[name], " Stoch Supp ", stochsupportsize[name], " NFaces ", totalfaces[name] )
+    println("SUMMARY: ", name, " Vals ", valsexact[name], " ", valsstoch[name], " Gap ", (valsexact[name] - valsstoch[name])/valsexact[name], " Err ", errstoch[name], " Times ", timesexact[name], " ", timesstoch[name], " FL time ", timesfacelattice[name], " Dim ", dims[name], " Cons ", ncons[name]," Exact Supp ", exactsupportsize[name], " Stoch Supp ", stochsupportsize[name], " NFaces ", totalfaces[name], " NFacesStoch ", stochtotalfaces[name] )
 end
