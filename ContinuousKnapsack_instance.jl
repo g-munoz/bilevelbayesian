@@ -1,6 +1,6 @@
 using LinearAlgebra
 
-n = 9;
+n = 4;
 
 a = rand(1:4,n);
 #a = zeros(n);
