@@ -1,4 +1,6 @@
-# Treecompression script
+# Exploiting the polyhedral geometry of stochastic linear bilevel programming
+
+Arxiv paper: https://arxiv.org/abs/2211.02268
 
 usage: julia main.py filename timelimit 
 
