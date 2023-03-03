@@ -1,6 +1,6 @@
 using FileIO, JLD2
 
-include("BayesianVertex.jl")
+include("functions.jl")
 
 function checkBounded(A,B,b,bigM) #Check if polyhedron is bounded, otherwise add bigM as bound
 
