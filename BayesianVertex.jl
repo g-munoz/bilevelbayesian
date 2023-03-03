@@ -1,14 +1,12 @@
 using LinearAlgebra, JuMP, Gurobi, Polymake, Printf
 
 
-function computeBigMs(A,B,b)
+function computeBigMs(A,B,b) #Find maximum and minimums for each constraint to use as bigM
 
     #(m,nx) = size(A);
     m = size(A,1);
     nx = size(A,2);
     ny = size(B,2);
-
-    #(ny,) = size(B');
 
     bigMs = -1e6*ones(m)
 
@@ -22,8 +20,6 @@ function computeBigMs(A,B,b)
     B = reshape(B,m,ny)
 
     @constraint(model, A*x + B*y .<=b);
-
-    #@constraint(model, [i = 1:m], A[i]*x + B[i]*y <=b[i])
     
     for i = 1:m
         @objective(model, Min, sum(A[i,j]*x[j] for j=1:nx) + sum( B[i,j]*y[j] for j=1:ny));
@@ -88,46 +84,31 @@ function findLabels(A, B, b, K, s, bigMarray, x_fix)
     return false, NaN
 end
 
-
-
-
-function AllVertex(A,B,b,cbFlag, K,s, bigMarray, runtimeexact)
+function AllVertex(A,B,b,cbFlag, K,s, bigMarray, runtimeexact) # Enumeration algorithm for vertices of chambers. Assumes faces are already computed
 
     #(m,nx) = size(A,1);
     nrows = size(A,1);
     nx = size(A,2);
     ny = size(B,2);
     start = time()
-
-    ###############################################
-    #We recover all the faces of D = {Ax + By <= b}
-    #of dimension nx. These are given by the nonempty
-    #intersection of ny affine spaces with linearly
-    #independent normal vectors.
-    ###############################################
-    # print("Running big M computation... ")
-    # bigMarray = -1e6*ones(m)
-    # if bigMflag
-    #     bigMarray = computeBigMs(A,B,b)
-    # end
-    #print("Done\nRunning faces computation... ")
-    #(K,s) = getFaces_pmk(A,B,b,m,nx,ny) #Warning: this function is implicitly assuming that all inequalities are facets
     
     print("\nFormulating base MIP... ")
     (m,zvar,xvar,outvar,yvar) = MIPVertexSearchBase(A,B,b,K,s,nx,ny,bigMarray);
+    set_silent(m)
 
     ### this copy is for a verifier model
-    ### for technical reasons couldn't use copy method
+    ### for technical reasons couldn't use the copy method
     (ver_model,zvar_ver,xvar_ver,outvar_ver,yvar_ver) = MIPVertexSearchBase(A,B,b,K,s,nx,ny,bigMarray);
     set_silent(ver_model)
     print("Done\n")
+
     #println("Tolerances:")
     #println(get_optimizer_attribute(m, "FeasibilityTol"))
     #println(get_optimizer_attribute(m, "IntFeasTol"))
     #set_optimizer_attribute(m, "FeasibilityTol", 1e-4)
     #set_optimizer_attribute(m, "IntFeasTol", 1e-4)
 
-    function greedy_callback_GRB(cb_data,cb_where::Cint)
+    function greedy_callback_GRB(cb_data,cb_where::Cint) # Callback to improve solutions greedily
 
         if cb_where != GRB_CB_MIPSOL
             return
@@ -144,7 +125,7 @@ function AllVertex(A,B,b,cbFlag, K,s, bigMarray, runtimeexact)
 
         feasible, x_val, y_val = verifysol(ver_model, zvar_ver, z_val, outvar_ver, out_val, xvar_ver, yvar_ver)
         if !feasible
-            print("Error: Gurobi provided an invalid solution")
+            println("Error: Gurobi provided an invalid solution")
             return
         end
 
@@ -155,20 +136,14 @@ function AllVertex(A,B,b,cbFlag, K,s, bigMarray, runtimeexact)
             end
             z_new = copy(round.(z_val))
             z_new[i] = 1
-            #@show zvar
-            #@show z_val
-            #@show z_new
 
-            #println("Submitting sol")
             status = MOI.submit(m, MOI.HeuristicSolution(cb_data), zvar, z_new)
-            #println("Submitted a heuristic solution, and the status was: ", status)
-            #sleep(5)
+
             if status == MOI.HEURISTIC_SOLUTION_ACCEPTED
                 z_val = z_new
                 improved = true
-                println("Went in!")
+                #println("Went in!")
                 return
-                #sleep(5)
             else
                 feasible, x_val, y_val = verifysol(ver_model, zvar_ver, z_new, outvar_ver, out_val, xvar_ver, yvar_ver)
                 if feasible
@@ -178,12 +153,6 @@ function AllVertex(A,B,b,cbFlag, K,s, bigMarray, runtimeexact)
                     return
                     
                     println("Test if passing more info fixes it")
-                    # @show size(zvar)
-                    # @show size(z_val)
-                    # @show size(xvar)
-                    # @show size(x_val)
-                    # @show size(yvar)
-                    # @show size(y_val)
                     status = MOI.submit(m, MOI.HeuristicSolution(cb_data), vcat(zvar,xvar,vec(yvar),outvar), vcat(z_new,x_val,vec(y_val),out_val))
                     println("Submitted a heuristic solution, and the status was: ", status,"  out ", out_val)
 
@@ -191,22 +160,14 @@ function AllVertex(A,B,b,cbFlag, K,s, bigMarray, runtimeexact)
                     jumpvals = vcat(z_new,x_val,vec(y_val),out_val)
                     dictionary = Dict(jumpvars .=> jumpvals)
                     println(primal_feasibility_report(m, dictionary))
-
-                    #println(vcat(zvar,xvar,vec(yvar),outvar), vcat(z_new,x_val,vec(y_val),out_val))
-                    #sleep(5)
-                #else
-                #    println("Well rejected solution")
-                #    sleep(5)
                 end
             end
         end
         if !improved
             println("Solution was not improved. Should be maximal")
-            #sleep(5)
             GRBterminate(backend(m))
         else
             println("A solution was improved") #should terminate too
-            #sleep(5)
         end
 
         return
@@ -241,7 +202,6 @@ function AllVertex(A,B,b,cbFlag, K,s, bigMarray, runtimeexact)
         X = hcat(X,x);
         z_all += z
 
-
         #We force at least one constraint z[k] to be active in the complement
         #of z. If this is not possibe, out is activated
         Ind = findall(a->a<=0.5, vec(z)); #the 0.5 is for numerical concerns
@@ -249,17 +209,15 @@ function AllVertex(A,B,b,cbFlag, K,s, bigMarray, runtimeexact)
 
         @constraint(ver_model,sum(zvar_ver[Ind]) + outvar_ver>=1);
         #@constraint(m, sum(zvar) <= value); #this may be a bad idea, since it is adding a ineq parallel to obj
-        #write_to_file(m, "modeliter.lp")
     end
     X = X[:,begin+1:end]
     used_faces = count(a->a>=0.5, vec(z_all))
-    #print("Used faces ",used_faces," of ", s,"\n")
     return X,used_faces
 end
 
 ######################################################################################
 
-function getFaces_pmk(A,B,b)
+function getFaces_pmk(A,B,b) #Compute all faces of polytope used in the algorithms using polymake. Exact and stochatich methods use differents sets of faces
     m = size(A,1);
     nx = size(A,2);
     ny = size(B,2);
@@ -279,8 +237,7 @@ function getFaces_pmk(A,B,b)
     #@show faces_dim_nx
     #@show size(faces_dim_nx)
 
-    
-    faces_dim_nx_MC = @convert_to Array{Int} graph.nodes_of_rank(HD,nx+1) #Dimension nx only, for MC
+    faces_dim_nx_MC = @convert_to Array{Int} graph.nodes_of_rank(HD,nx+1) #Dimension nx only, for MC algorithm
     s_MC = length(faces_dim_nx_MC)
     K_MC = zeros(s_MC,m)
 
@@ -308,7 +265,7 @@ function getFaces_pmk(A,B,b)
     	
     	ind = zeros(1,m) #this will indicate the inequalities that are tight for ALL vertices
     	for row = 1 : m
-    		#this piece of code should be done in one line, but the structure of polymake SparseBoolVec is strange
+    		#this piece of code should be done in one line, but the structure of polymake SparseBoolVec is not clear
     		alltrue = true
     		for val in ineqs[row,:]
     			alltrue = alltrue && val 
@@ -318,7 +275,6 @@ function getFaces_pmk(A,B,b)
     		end
     	end
     	K[i,:] = ind	
-
     end
 
     for i = 1 : s_MC
@@ -331,7 +287,7 @@ function getFaces_pmk(A,B,b)
     	
     	ind = zeros(1,m) #this will indicate the inequalities that are tight for ALL vertices
     	for row = 1 : m
-    		#this piece of code should be done in one line, but the structure of polymake SparseBoolVec is strange
+    		#this piece of code should be done in one line, but the structure of polymake SparseBoolVec is not clear
     		alltrue = true
     		for val in ineqs[row,:]
     			alltrue = alltrue && val 
@@ -349,7 +305,7 @@ end
 
 ######################################################################################
 
-function MIPVertexSearchBase(A,B,b,K,s,nx,ny,bigMarray)
+function MIPVertexSearchBase(A,B,b,K,s,nx,ny,bigMarray) # Base MIP for enumerating the vertices of the chambers
 
     ###########################################
     # nx -> X-dimension
@@ -357,41 +313,39 @@ function MIPVertexSearchBase(A,B,b,K,s,nx,ny,bigMarray)
     # s  -> Number of nx-faces of D = {(x,y) : Ax+By <= b}
     ###########################################
     
-        m = direct_model(Gurobi.Optimizer())
-    
-        @variable(m, x[1:nx]);
-        @variable(m, y[1:ny,1:s]);
-        @variable(m, 0<=z[1:s]<=1, Int);
-        @variable(m, 0<=out<=1, Int);
+    m = direct_model(Gurobi.Optimizer())
 
-        nrows = size(A,1);
-        A = reshape(A,nrows,nx)
-        B = reshape(B,nrows,ny)
-    
-        @constraint(m, [i = 1:s], A*x + B*y[1:ny,i] .<=b);
-        #println(bigMarray)
-        
-        for i = 1:s
-            Ind = findall(a->a==1, vec(K[i,:]));
-            #if z[i] is activated, then sum(A[Ind,:]*x + B[Ind,:]*y[1:ny,i] - b[Ind]) == 0.
-            #Otherwise, if z[i] = 0, then the constraint is trivially verified.
-            #The constant -1e6 is a Big-M constraint.
-            #println(bigMarray[Ind]*(1-z[i]))
+    @variable(m, x[1:nx]);
+    @variable(m, y[1:ny,1:s]);
+    @variable(m, 0<=z[1:s]<=1, Int);
+    @variable(m, 0<=out<=1, Int);
 
-            # Constraints are now decoupled. It leads to better performance
-            for j in Ind
-                @constraint(m, sum( A[j,k]*x[k] for k=1:nx) + sum(B[j,k]*y[k,i] for k=1:ny)- b[j] - bigMarray[j]*(1-z[i])  >= 0);
-            end
-            #@constraint(m, sum( A[Ind,:]*x + B[Ind,:]*y[1:ny,i] - b[Ind] - bigMarray[Ind]*(1-z[i]) ) .>= 0);
+    nrows = size(A,1);
+    A = reshape(A,nrows,nx)
+    B = reshape(B,nrows,ny)
+
+    @constraint(m, [i = 1:s], A*x + B*y[1:ny,i] .<=b);
+    #println(bigMarray)
+    
+    for i = 1:s
+        Ind = findall(a->a==1, vec(K[i,:]));
+        #if z[i] is activated, then sum(A[Ind,:]*x + B[Ind,:]*y[1:ny,i] - b[Ind]) == 0.
+        #Otherwise, if z[i] = 0, then the constraint is trivially verified.
+
+        # These constraints can be put together into one, but decoupled leads to better performance
+        for j in Ind
+            @constraint(m, sum( A[j,k]*x[k] for k=1:nx) + sum(B[j,k]*y[k,i] for k=1:ny)- b[j] - bigMarray[j]*(1-z[i])  >= 0);
         end
-    
-        @constraint(m, sum(z) <= s*(1-out));
-    
-        @objective(m,Max, sum(z));
-        return m, z, x, out, y;
+        #@constraint(m, sum( A[Ind,:]*x + B[Ind,:]*y[1:ny,i] - b[Ind] - bigMarray[Ind]*(1-z[i]) ) .>= 0);
+    end
+
+    @constraint(m, sum(z) <= s*(1-out));
+
+    @objective(m,Max, sum(z));
+    return m, z, x, out, y;
 end
 
-function findSteps(A, B, b, K, s, x_fix, zvals)
+function findSteps(A, B, b, K, s, x_fix, zvals) # steps taken after sampling in stochastic method
     
     nrows = size(A,1);
     nx = size(A,2);

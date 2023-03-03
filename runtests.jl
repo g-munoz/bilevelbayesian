@@ -2,7 +2,7 @@ using FileIO, JLD2
 
 include("BayesianVertex.jl")
 
-function checkBounded(A,B,b,bigM)
+function checkBounded(A,B,b,bigM) #Check if polyhedron is bounded, otherwise add bigM as bound
 
     m = size(A,1);
     nx = size(A,2);
@@ -15,7 +15,7 @@ function checkBounded(A,B,b,bigM)
     @variable(model, x[1:nx]);
     @variable(model, y[1:ny]);
     
-    #next to lines are to force vectors to be interpreted matrices
+    #the next to lines are to force vectors to be interpreted matrices
     A = reshape(A,m,nx)
     B = reshape(B,m,ny)
 
@@ -87,12 +87,10 @@ function checkBounded(A,B,b,bigM)
             b = vcat(b,bigM)
         end
     end
-
     return A,B,b,xbox
 end
 
-
-function createFollowerModel(x,A,B,b)
+function createFollowerModel(x,A,B,b) # Create follower problem for a given leader vector x
     m = size(A,1);
     nx = size(A,2);
     ny = size(B,2);
@@ -111,7 +109,6 @@ function createFollowerModel(x,A,B,b)
 
     return model, y
 end
-
 
 function samplevector_unitsphere(d)
     v = zeros(d,1) 
@@ -132,7 +129,7 @@ function samplevector_box(nx, xbox)
     return v
 end
 
-function evalLeader(x, A, B, b, Fx, Fy, N, csample)
+function evalLeader(x, A, B, b, Fx, Fy, N, csample) # evaluate the leader objective using the given samples of the follower
 
     m = size(A,1);
     nx = size(A,2);
@@ -141,7 +138,8 @@ function evalLeader(x, A, B, b, Fx, Fy, N, csample)
     Y = zeros(ny,1)
 
     model,yvar = createFollowerModel(x,A,B,b)
-
+    set_silent(model)
+    
     for i=1:N 
         c = csample[i]
         ysol = solveFollower(c,model,yvar)
@@ -157,7 +155,7 @@ function evalLeader(x, A, B, b, Fx, Fy, N, csample)
     return leaderobj
 end
 
-function solveFollower(c,model,yvar)
+function solveFollower(c,model,yvar) # Solve the follower problem
     ny = length(yvar)
     @objective(model, Min, sum(c.*yvar));
     optimize!(model)
@@ -169,323 +167,219 @@ function solveFollower(c,model,yvar)
     return ysol
 end
 
+# Variables mostly used for reports
+timeexact = 0
+timestoch = 0
+valexact = 0
+valstoch = 0
 
+dim = 0
+ncons = 0
 
-bolibinstances = [
-"LiuHart1994",
-"GlackinEtal2009",
-"BialasKarwan1984a",
-"ClarkWesterberg1988",
-"LanWenShihLee2007",
-"Bard1984b",
-"WangJiaoLi2005", #Unbounded
-"MershaDempe2006Ex2",#Unbounded
-"TuyEtal1994", #Unbounded #issue with t
-"BialasKarwan1984b",
-"HaurieSavardWhite1990",
-"HuHuangZhang2009",
-"Bard1991Ex2",
-"VisweswaranEtal1996",
-"BardFalk1982Ex2", #issue with t
-"BenAyedBlair1990b",
-"AnandalinghamWhite1990",
-"BenAyedBlair1990a",
-"ClarkWesterberg1990b",
-"MershaDempe2006Ex1",
-# #"TuyEtal2007Ex3", BIG
-"Bard1984a",
-"TuyEtal1993", #issue with t
-"CandlerTownsley1982"] #issue with t
+exactsupportsize = 0
+stochsupportsize = 0
+totalfaces = 0
+stochtotalfaces = 0
 
-bolibdir = "BOLIBver2/JuliaExamples/"
+errstoch = 0
 
+timefacelattice = 0
 
-coralinstances = [##"knapsack",
-"linderoth",
-##"milp_10_20_50_2310",
-##"milp_4_20_10_0110",
-"moore90_2",#
-"moore90"
-]
-
-coraldir = "CoralLib/notInterdiction/"
-
-timesexact = Dict()
-timesstoch = Dict()
-valsexact = Dict()
-valsstoch = Dict()
-
-dims = Dict()
-ncons = Dict()
-
-exactsupportsize = Dict()
-stochsupportsize = Dict()
-totalfaces = Dict()
-stochtotalfaces = Dict()
-
-errstoch = Dict()
-
-timesfacelattice = Dict()
-
-vertex = Dict()
-
-instancelist = bolibinstances
-dir = bolibdir
+vertex = 0
 
 couplingtolower = true
 if ARGS[1] == "knapsack"
-    instancelist = ["ContinuousKnapsack_instance.jl"]
+    name = "ContinuousKnapsack_instance.jl"
     couplingtolower = false
 else
-    instancelist = [ARGS[1]]
+    name = ARGS[1]
 end
 
-for name in instancelist
-    println("\n========\n Running ", name, "\n=========\n")
-    #print(@sprintf("Would read BOLIBver2/JuliaExamples/%s.jl\n",name))
-    #include(@sprintf("%s%s.jl",dir,name))
+println("\n========\n Running ", name, "\n=========\n")
 
-    
-    # knapflag = false
-    # if name == "knapsack"
-    #     name = "ContinuousKnapsack_instance.jl"
-    #     knapflag = true
-    # end
-    include(@sprintf("%s",name))
-    
-    #if !knapflag
-        (ncoupling,) = size(Gx)
-        if couplingtolower && ncoupling >= 1
-            local A = vcat(Gx,gx)
-            local B = vcat(Gy,gy)
-            local b = vcat(-bG,-bg)
-        else
-            local A = gx
-            local B = gy
-            local b = -bg
-        end
-    #else
-    #     n = parse(Int, ARGS[3]);
+include(@sprintf("%s",name))
 
-    #     a = rand(1:4,n);
-    #     #a = zeros(n);
-    #     #for i=1:n
-    #     #    a[i] = i%4 + 1
-    #     #end
+(ncoupling,) = size(Gx)
+if couplingtolower && ncoupling >= 1
+    A = vcat(Gx,gx)
+    B = vcat(Gy,gy)
+    b = vcat(-bG,-bg)
+else
+    A = gx
+    B = gy
+    b = -bg
+end
 
-    #     A = zeros(2*n+3,1);
-    #     A[1] = 1;
-    #     A[2] = -1;
-    #     A[3] = -1;
+A,B,b,xbox = checkBounded(A,B,b,1000) #We add artificial bounds if we need to
+nx = size(A,2);
+ny = size(B,2);
+m = size(A,1);
 
-    #     B = vcat(zeros(3,n),Matrix(1.0I, n, n),Matrix(-1.0I, n, n));
+dim = nx+ny;
+ncons = m;
 
-    #     B[3,1:n] = a;
+#### Common computations ####
+print("Running big M computation... ")
+bigMarray = computeBigMs(A,B,b)
+print("Done\n")
 
-    #     ub = sum(a);
-    #     lb = 0;
+print("\nRunning faces computation... ")
+start = time()
+(K,s, K_MC, s_MC) = getFaces_pmk(A,B,b) #Warning: this function is implicitly assuming that all inequalities are facets    
+timefacelattice = time() - start
+print("Done\n")
+#continue
+######## Sampling of follower cost ###########
 
-    #     b = vcat( [ub; -lb; 0], ones(n,1), zeros(n,1));
+N = 100
+csample = zeros(N, ny)
+for i=1:N 
+    csample[i,:] = samplevector_unitsphere(ny)
+end 
 
-    #     #objective is Max sum(y) - b, then we make it min
-    #     Fx = [1]
-    #     Fy = -ones(n,1)
+runtimeexact = parse(Int,ARGS[2])
 
-    #     Gx = []
-    #     Gy = []
-    # end
-    
-    A,B,b,xbox = checkBounded(A,B,b,1000) #We add artificial bounds if we need to
-    nx = size(A,2);
-    ny = size(B,2);
-    m = size(A,1);
+totalfaces = s
+stochtotalfaces = s_MC
 
-    dims[name] = nx+ny;
-    ncons[name] = m;
-    
-
-    #### Common computations ####
-    print("Running big M computation... ")
-    bigMarray = computeBigMs(A,B,b)
-    print("Done\n")
-
-    print("\nRunning faces computation... ")
+#### Exact method ####
+runExact = true
+minval = Inf
+if runExact
     start = time()
-    (K,s, K_MC, s_MC) = getFaces_pmk(A,B,b) #Warning: this function is implicitly assuming that all inequalities are facets    
-    timesfacelattice[name] = time() - start
-    print("Done\n")
-    #continue
-    ######## Sampling of follower cost ###########
+    local (X,used_faces) = AllVertex(A, B, b,true, K, s, bigMarray, runtimeexact)
+    vertex = X
 
-    N = 100
-    csample = zeros(N, ny)
-    for i=1:N 
-        csample[i,:] = samplevector_unitsphere(ny)
-    end 
+    exactsupportsize = used_faces
 
-    runtimeexact = parse(Int,ARGS[2])
-
-    #### Exact method ####
-    runExact = true
-    minval = Inf
-    if runExact
-        start = time()
-        local (X,used_faces) = AllVertex(A, B, b,true, K, s, bigMarray, runtimeexact)
-        vertex[name] = X
-
-	exactsupportsize[name] = used_faces
-	totalfaces[name] = s
-    stochtotalfaces[name] = s_MC
-
-        print("\nVertices are:\n")
-        @show vertex
-        print("\nBox:\n")
-        @show xbox
-        nvertex = size(X,2);
-        
-        print("\nComputing leader values in points\n")
-        
-        for i =1:nvertex
-            x = X[:,i]
-            leadervalue = evalLeader(x, A, B, b, Fx, Fy, N,csample)
-            #println(leadervalue)
-            if leadervalue < minval
-                minval = leadervalue
-            end
+    print("\nVertices are:\n")
+    @show vertex
+    print("\nBox:\n")
+    @show xbox
+    nvertex = size(X,2);
+    
+    print("\nComputing leader values in points\n")
+    
+    for i =1:nvertex
+        x = X[:,i]
+        leadervalue = evalLeader(x, A, B, b, Fx, Fy, N,csample)
+        #println(leadervalue)
+        if leadervalue < minval
+            global minval = leadervalue
         end
-
-        timesexact[name] = time() - start
-        valsexact[name] = minval
-    end
-    #############################
-
-    #### Stochastic method ####
-    runStoch = true
-    Nsamplesx = 100
-    if runStoch
-        start = time()
-        bestx = zeros(nx,1)
-        bestxval = Inf
-
-        seenlabels = Set()
-        
-        z_all = zeros(s_MC) #To count the faces used
-
-        for i=1:Nsamplesx
-            x_fix = samplevector_box(nx, xbox)
-            #x_fix = [0.5; 2.0]
-            found, zvals = findLabels(A, B, b, K_MC, s_MC, bigMarray, x_fix)
-
-            #print(size(z_all), " ", size(zvals))
-            
-
-            if found
-
-                z_all += zvals
-                Ind = findall(a->a>=0.5, vec(zvals));
-                push!(seenlabels,Set(Ind))
-
-                d = zeros(nx,1)
-                success, t = findSteps(A, B, b, K_MC, s_MC, x_fix, zvals)
-                if !success #something strange happened in steps. Happening in CandlerTownsley1982
-                    continue
-                end
-                # @show t
-                # @show x_fix
-                # @show found
-                # @show zvals
-
-                ej = zeros(nx,1)
-                val2 = evalLeader(x_fix, A, B, b, Fx, Fy, N,csample)
-
-                ## new attempt ####
-                linA = zeros(nx+1,nx+1)
-                linrhs = zeros(nx+1)
-                ###################
-
-                for j=1:nx
-                    ej[j] = 1
-                    val1 = evalLeader(x_fix+t[j]*ej, A, B, b, Fx, Fy, N,csample) 
-                    d[j] = (val1-val2)/t[j]
-                    
-                    #############
-                    # linA[j, :] = transpose(vcat(x_fix + t[j]*ej,1))
-                    # linrhs[j] = val1
-                    #############
-
-                    ej[j] = 0
-                end
-                
-
-                #############
-                # linA[nx+1, :] = transpose(vcat(x_fix,1))
-                # linrhs[nx+1] = val2
-                # newd = linA\linrhs
-
-                # xoptnew, optvalnew = solveLeader(A, B, b, K, s, newd[1:nx], zvals)
-                # optvalnew += newd[nx+1]
-                #############
-
-                # @show d
-                # @show newd[1:nx]
-
-                xopt, optval = solveLeader(A, B, b, K_MC, s_MC, d, zvals)
-
-                ## sanity check ##
-                # @show x_fix
-                # println("D problem gave value ", optval)
-                # @show xopt
-                # println("Eval leader on opt gave ", evalLeader(xopt, A, B, b, Fx, Fy, N))
-                
-                # println("new D problem gave value ", optvalnew)
-                # @show xoptnew
-                # println("Eval leader on opt gave ", evalLeader(xoptnew, A, B, b, Fx, Fy, N))
-                ##################
-
-                trueval = evalLeader(xopt, A, B, b, Fx, Fy, N,csample)
-                if trueval < bestxval
-                    bestxval = trueval
-                    bestx = xopt
-                end
-            end
-        end
-
-        used_faces = count(a->a>=0.5, vec(z_all))
-
-        timesstoch[name] = time() - start
-        valsstoch[name] = bestxval
-
-	    stochsupportsize[name] = used_faces
-
-        ## Error computation
-        seencount = 0
-        for i=1:Nsamplesx
-            x_fix = samplevector_box(nx, xbox)
-            found, zvals = findLabels(A, B, b, K_MC, s_MC, bigMarray, x_fix)
-
-            if found 
-                Ind = findall(a->a>=0.5, vec(zvals));
-                if Set(Ind) in seenlabels
-                    println("Seen!")
-                    seencount += 1
-                end
-            end
-        end
-        errstoch[name] = 1- seencount/Nsamplesx
-
     end
 
-    # println("========================================")
-    # println("========================================")
-    # println("Optimal exact value for leader ", minval)
-    # println("Optimal stoch value for leader ", bestxval)
-    # println("========================================")
-    # println("========================================")
-
-    #break
+    timeexact = time() - start
+    valexact = minval
 end
+#############################
+
+#### Stochastic method ####
+runStoch = true
+Nsamplesx = 100
+bestx = zeros(nx,1)
+bestxval = Inf
+z_all = zeros(s_MC) #To count the faces used
+if runStoch
+    start = time()
+    
+    seenlabels = Set()
+    
+    for i=1:Nsamplesx
+        x_fix = samplevector_box(nx, xbox)
+
+        found, zvals = findLabels(A, B, b, K_MC, s_MC, bigMarray, x_fix)
+
+        if found
+            global z_all += zvals
+            Ind = findall(a->a>=0.5, vec(zvals));
+            push!(seenlabels,Set(Ind))
+
+            d = zeros(nx,1)
+            success, t = findSteps(A, B, b, K_MC, s_MC, x_fix, zvals)
+            if !success 
+                continue
+            end
+
+            ej = zeros(nx,1)
+            val2 = evalLeader(x_fix, A, B, b, Fx, Fy, N,csample)
+
+            ## new attempt ####
+            linA = zeros(nx+1,nx+1)
+            linrhs = zeros(nx+1)
+            ###################
+
+            for j=1:nx
+                ej[j] = 1
+                val1 = evalLeader(x_fix+t[j]*ej, A, B, b, Fx, Fy, N,csample) 
+                d[j] = (val1-val2)/t[j]
+                
+                #############
+                # linA[j, :] = transpose(vcat(x_fix + t[j]*ej,1))
+                # linrhs[j] = val1
+                #############
+
+                ej[j] = 0
+            end
+            
+            #############
+            # linA[nx+1, :] = transpose(vcat(x_fix,1))
+            # linrhs[nx+1] = val2
+            # newd = linA\linrhs
+
+            # xoptnew, optvalnew = solveLeader(A, B, b, K, s, newd[1:nx], zvals)
+            # optvalnew += newd[nx+1]
+            #############
+
+            # @show d
+            # @show newd[1:nx]
+
+            xopt, optval = solveLeader(A, B, b, K_MC, s_MC, d, zvals)
+
+            ## sanity check ##
+            # @show x_fix
+            # println("D problem gave value ", optval)
+            # @show xopt
+            # println("Eval leader on opt gave ", evalLeader(xopt, A, B, b, Fx, Fy, N))
+            
+            # println("new D problem gave value ", optvalnew)
+            # @show xoptnew
+            # println("Eval leader on opt gave ", evalLeader(xoptnew, A, B, b, Fx, Fy, N))
+            ##################
+
+            trueval = evalLeader(xopt, A, B, b, Fx, Fy, N,csample)
+            if trueval < bestxval
+                global bestxval = trueval
+                global bestx = xopt
+            end
+        end
+    end
+
+    used_faces = count(a->a>=0.5, vec(z_all))
+
+    timestoch = time() - start
+    valstoch = bestxval
+
+    stochsupportsize = used_faces
+
+    ## Error computation
+    seencount = 0
+    for i=1:Nsamplesx
+        x_fix = samplevector_box(nx, xbox)
+        found, zvals = findLabels(A, B, b, K_MC, s_MC, bigMarray, x_fix)
+
+        if found 
+            Ind = findall(a->a>=0.5, vec(zvals));
+            if Set(Ind) in seenlabels
+                #println("Seen!")
+                global seencount += 1
+            end
+        end
+    end
+    errstoch = 1- seencount/Nsamplesx
+end
+
 
 println("\n========\n Summary \n=========\n")
-for name in instancelist
-    println("SUMMARY: ", name, " Vals ", valsexact[name], " ", valsstoch[name], " Gap ", (valsexact[name] - valsstoch[name])/valsexact[name], " Err ", errstoch[name], " Times ", timesexact[name], " ", timesstoch[name], " FL time ", timesfacelattice[name], " Dim ", dims[name], " Cons ", ncons[name]," Exact Supp ", exactsupportsize[name], " Stoch Supp ", stochsupportsize[name], " NFaces ", totalfaces[name], " NFacesStoch ", stochtotalfaces[name] )
-end
+
+println("SUMMARY: ", name, " ValExact ", valexact, " ValStoch ", valstoch, " Gap ", (valexact - valstoch)/valexact, " ErrStoch ", errstoch, " TimeExact ", timeexact, " TimeStoch ", timestoch, " FaceLat-Time ", timefacelattice, " Dim ", dim, " NCons ", ncons," ExactSupp ", exactsupportsize, " StochSupp ", stochsupportsize, " NFaces ", totalfaces, " NFacesStoch ", stochtotalfaces)
