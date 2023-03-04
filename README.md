@@ -4,7 +4,7 @@ Arxiv paper: https://arxiv.org/abs/2211.02268
 
 usage: julia main.py filename timelimit 
 
-- filename is either a julia file with the instance or the string "knapsack". In the latter is uses "ContinuousKnapsack_instance.jl" to generate the instance
+- filename is either a julia file with the instance or the string "knapsack". In the latter case it uses "ContinuousKnapsack_instance.jl" to generate the instance
 - timelimit specifies the time limit of the exact method
 
 Sample usages:
